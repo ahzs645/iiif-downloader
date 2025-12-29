@@ -1,0 +1,28 @@
+{
+  "manifest_version": 3,
+  "name": "IIIF Manifest Downloader",
+  "version": "1.0.0",
+  "description": "Detect IIIF/Mirador viewers and bulk download all pages from the manifest",
+  "permissions": [
+    "activeTab",
+    "downloads",
+    "scripting",
+    "offscreen"
+  ],
+  "host_permissions": [
+    "<all_urls>"
+  ],
+  "action": {
+    "default_popup": "popup.html"
+  },
+  "background": {
+    "service_worker": "background.js"
+  },
+  "content_scripts": [
+    {
+      "matches": ["<all_urls>"],
+      "js": ["content.js"],
+      "run_at": "document_idle"
+    }
+  ]
+}

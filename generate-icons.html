@@ -1,0 +1,113 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <title>Generate Extension Icons</title>
+  <style>
+    body { font-family: Arial, sans-serif; padding: 20px; }
+    .icon-container { margin: 20px 0; }
+    canvas { border: 1px solid #ccc; margin: 5px; }
+    button { padding: 10px 20px; margin: 10px; cursor: pointer; }
+    a { display: inline-block; margin: 5px; padding: 8px 16px; background: #667eea; color: white; text-decoration: none; border-radius: 4px; }
+  </style>
+</head>
+<body>
+  <h1>Generate Extension Icons</h1>
+  <p>Click the buttons below to download each icon size, then save them to the <code>icons</code> folder.</p>
+
+  <div class="icon-container">
+    <h3>Icon Previews:</h3>
+    <canvas id="icon16" width="16" height="16"></canvas>
+    <canvas id="icon48" width="48" height="48"></canvas>
+    <canvas id="icon128" width="128" height="128"></canvas>
+  </div>
+
+  <div>
+    <a id="download16" download="icon16.png">Download 16x16</a>
+    <a id="download48" download="icon48.png">Download 48x48</a>
+    <a id="download128" download="icon128.png">Download 128x128</a>
+  </div>
+
+  <script>
+    function drawIcon(ctx, size) {
+      // Background gradient
+      const gradient = ctx.createLinearGradient(0, 0, size, size);
+      gradient.addColorStop(0, '#667eea');
+      gradient.addColorStop(1, '#764ba2');
+
+      // Rounded rectangle background
+      const radius = size * 0.15;
+      ctx.beginPath();
+      ctx.roundRect(0, 0, size, size, radius);
+      ctx.fillStyle = gradient;
+      ctx.fill();
+
+      // Draw IIIF-style hexagon
+      ctx.strokeStyle = 'white';
+      ctx.lineWidth = size * 0.03;
+      ctx.lineJoin = 'round';
+
+      const cx = size / 2;
+      const cy = size / 2;
+      const hexSize = size * 0.3;
+
+      ctx.beginPath();
+      ctx.moveTo(cx - hexSize, cy - hexSize * 0.3);
+      ctx.lineTo(cx, cy - hexSize * 0.6);
+      ctx.lineTo(cx + hexSize, cy - hexSize * 0.3);
+      ctx.lineTo(cx + hexSize, cy + hexSize * 0.3);
+      ctx.lineTo(cx, cy + hexSize * 0.6);
+      ctx.lineTo(cx - hexSize, cy + hexSize * 0.3);
+      ctx.closePath();
+      ctx.stroke();
+
+      // Lines inside
+      ctx.beginPath();
+      ctx.moveTo(cx, cy - hexSize * 0.6);
+      ctx.lineTo(cx, cy + hexSize * 0.6);
+      ctx.stroke();
+
+      ctx.beginPath();
+      ctx.moveTo(cx - hexSize, cy - hexSize * 0.3);
+      ctx.lineTo(cx + hexSize, cy - hexSize * 0.3);
+      ctx.stroke();
+
+      // Download circle
+      ctx.fillStyle = 'white';
+      ctx.beginPath();
+      ctx.arc(cx + size * 0.2, cy + size * 0.15, size * 0.15, 0, Math.PI * 2);
+      ctx.fill();
+
+      // Plus/download icon
+      ctx.strokeStyle = '#667eea';
+      ctx.lineWidth = size * 0.04;
+      ctx.lineCap = 'round';
+
+      const iconCx = cx + size * 0.2;
+      const iconCy = cy + size * 0.15;
+      const iconSize = size * 0.08;
+
+      ctx.beginPath();
+      ctx.moveTo(iconCx, iconCy - iconSize);
+      ctx.lineTo(iconCx, iconCy + iconSize);
+      ctx.stroke();
+
+      ctx.beginPath();
+      ctx.moveTo(iconCx - iconSize, iconCy);
+      ctx.lineTo(iconCx + iconSize, iconCy);
+      ctx.stroke();
+    }
+
+    // Generate icons
+    const sizes = [16, 48, 128];
+    sizes.forEach(size => {
+      const canvas = document.getElementById(`icon${size}`);
+      const ctx = canvas.getContext('2d');
+      drawIcon(ctx, size);
+
+      // Set download link
+      const link = document.getElementById(`download${size}`);
+      link.href = canvas.toDataURL('image/png');
+    });
+  </script>
+</body>
+</html>

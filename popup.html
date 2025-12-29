@@ -1,0 +1,482 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>IIIF Manifest Downloader</title>
+  <style>
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+    }
+
+    body {
+      width: 420px;
+      min-height: 300px;
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, sans-serif;
+      font-size: 14px;
+      color: #333;
+      background: #f5f5f5;
+    }
+
+    .header {
+      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+      color: white;
+      padding: 16px;
+      text-align: center;
+    }
+
+    .header h1 {
+      font-size: 18px;
+      font-weight: 600;
+      margin-bottom: 4px;
+    }
+
+    .header p {
+      font-size: 12px;
+      opacity: 0.9;
+    }
+
+    .content {
+      padding: 16px;
+    }
+
+    .status-card {
+      background: white;
+      border-radius: 8px;
+      padding: 16px;
+      margin-bottom: 16px;
+      box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+    }
+
+    .status-indicator {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      margin-bottom: 8px;
+    }
+
+    .status-dot {
+      width: 12px;
+      height: 12px;
+      border-radius: 50%;
+      flex-shrink: 0;
+    }
+
+    .status-dot.detected {
+      background: #22c55e;
+      box-shadow: 0 0 8px rgba(34, 197, 94, 0.5);
+    }
+
+    .status-dot.not-detected {
+      background: #ef4444;
+    }
+
+    .status-dot.loading {
+      background: #f59e0b;
+      animation: pulse 1.5s infinite;
+    }
+
+    @keyframes pulse {
+      0%, 100% { opacity: 1; }
+      50% { opacity: 0.5; }
+    }
+
+    .status-text {
+      font-weight: 600;
+    }
+
+    .status-text.detected { color: #22c55e; }
+    .status-text.not-detected { color: #ef4444; }
+    .status-text.loading { color: #f59e0b; }
+
+    .manifest-url {
+      font-size: 11px;
+      color: #666;
+      word-break: break-all;
+      background: #f0f0f0;
+      padding: 8px;
+      border-radius: 4px;
+      margin-top: 8px;
+      max-height: 60px;
+      overflow-y: auto;
+    }
+
+    .info-row {
+      display: flex;
+      justify-content: space-between;
+      padding: 8px 0;
+      border-bottom: 1px solid #eee;
+    }
+
+    .info-row:last-child {
+      border-bottom: none;
+    }
+
+    .info-label {
+      color: #666;
+    }
+
+    .info-value {
+      font-weight: 600;
+      color: #333;
+    }
+
+    .pages-section {
+      background: white;
+      border-radius: 8px;
+      margin-bottom: 16px;
+      box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+      overflow: hidden;
+    }
+
+    .pages-header {
+      padding: 12px 16px;
+      background: #f8f8f8;
+      border-bottom: 1px solid #eee;
+      font-weight: 600;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+
+    .pages-list {
+      max-height: 200px;
+      overflow-y: auto;
+    }
+
+    .page-item {
+      padding: 10px 16px;
+      border-bottom: 1px solid #f0f0f0;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      font-size: 13px;
+    }
+
+    .page-item:last-child {
+      border-bottom: none;
+    }
+
+    .page-item:hover {
+      background: #f8f8f8;
+    }
+
+    .page-num {
+      background: #667eea;
+      color: white;
+      width: 28px;
+      height: 28px;
+      border-radius: 4px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-weight: 600;
+      font-size: 12px;
+      flex-shrink: 0;
+    }
+
+    .page-label {
+      flex: 1;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
+    .page-status {
+      font-size: 16px;
+    }
+
+    .options-section {
+      background: white;
+      border-radius: 8px;
+      padding: 16px;
+      margin-bottom: 16px;
+      box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+    }
+
+    .option-row {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      margin-bottom: 12px;
+    }
+
+    .option-row:last-child {
+      margin-bottom: 0;
+    }
+
+    .option-row label {
+      flex: 1;
+      cursor: pointer;
+    }
+
+    .option-row input[type="checkbox"] {
+      width: 18px;
+      height: 18px;
+      cursor: pointer;
+    }
+
+    .option-row select {
+      padding: 6px 10px;
+      border: 1px solid #ddd;
+      border-radius: 4px;
+      background: white;
+      cursor: pointer;
+    }
+
+    .btn {
+      width: 100%;
+      padding: 14px;
+      border: none;
+      border-radius: 8px;
+      font-size: 15px;
+      font-weight: 600;
+      cursor: pointer;
+      transition: all 0.2s;
+    }
+
+    .btn-primary {
+      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+      color: white;
+    }
+
+    .btn-primary:hover {
+      transform: translateY(-1px);
+      box-shadow: 0 4px 12px rgba(102, 126, 234, 0.4);
+    }
+
+    .btn-primary:disabled {
+      background: #ccc;
+      transform: none;
+      box-shadow: none;
+      cursor: not-allowed;
+    }
+
+    .btn-secondary {
+      background: #e0e0e0;
+      color: #333;
+      margin-top: 8px;
+    }
+
+    .btn-secondary:hover {
+      background: #d0d0d0;
+    }
+
+    .progress-section {
+      background: white;
+      border-radius: 8px;
+      padding: 16px;
+      margin-bottom: 16px;
+      box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+    }
+
+    .progress-header {
+      display: flex;
+      justify-content: space-between;
+      margin-bottom: 8px;
+    }
+
+    .progress-bar {
+      width: 100%;
+      height: 8px;
+      background: #e0e0e0;
+      border-radius: 4px;
+      overflow: hidden;
+    }
+
+    .progress-fill {
+      height: 100%;
+      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+      border-radius: 4px;
+      transition: width 0.3s ease;
+    }
+
+    .progress-text {
+      font-size: 13px;
+      color: #666;
+      margin-top: 8px;
+      text-align: center;
+    }
+
+    .error-message {
+      background: #fef2f2;
+      border: 1px solid #fecaca;
+      color: #dc2626;
+      padding: 12px;
+      border-radius: 8px;
+      margin-bottom: 16px;
+      font-size: 13px;
+    }
+
+    .success-message {
+      background: #f0fdf4;
+      border: 1px solid #bbf7d0;
+      color: #16a34a;
+      padding: 12px;
+      border-radius: 8px;
+      margin-bottom: 16px;
+      font-size: 13px;
+      text-align: center;
+    }
+
+    .hidden {
+      display: none !important;
+    }
+
+    .manual-input {
+      margin-top: 12px;
+    }
+
+    .manual-input input {
+      width: 100%;
+      padding: 10px;
+      border: 1px solid #ddd;
+      border-radius: 4px;
+      font-size: 13px;
+      margin-bottom: 8px;
+    }
+
+    .manual-input input:focus {
+      outline: none;
+      border-color: #667eea;
+    }
+  </style>
+</head>
+<body>
+  <div class="header">
+    <h1>IIIF Manifest Downloader</h1>
+    <p>Download all pages from IIIF viewers</p>
+  </div>
+
+  <div class="content">
+    <!-- Status Card -->
+    <div class="status-card">
+      <div class="status-indicator">
+        <div class="status-dot loading" id="statusDot"></div>
+        <span class="status-text loading" id="statusText">Checking for IIIF viewer...</span>
+      </div>
+      <div class="manifest-url hidden" id="manifestUrlDisplay"></div>
+    </div>
+
+    <!-- Error Message -->
+    <div class="error-message hidden" id="errorMessage"></div>
+
+    <!-- Success Message -->
+    <div class="success-message hidden" id="successMessage">
+      Download complete! All pages have been saved.
+    </div>
+
+    <!-- Manual Input (shown when no viewer detected) -->
+    <div class="manual-input hidden" id="manualInput">
+      <input type="text" id="manualManifestUrl" placeholder="Paste IIIF manifest URL here...">
+      <button class="btn btn-secondary" id="loadManualBtn">Load Manifest</button>
+    </div>
+
+    <!-- Info Section -->
+    <div class="status-card hidden" id="infoSection">
+      <div class="info-row">
+        <span class="info-label">Total Pages</span>
+        <span class="info-value" id="pageCount">0</span>
+      </div>
+      <div class="info-row">
+        <span class="info-label">Document Title</span>
+        <span class="info-value" id="docTitle">-</span>
+      </div>
+    </div>
+
+    <!-- Pages List -->
+    <div class="pages-section hidden" id="pagesSection">
+      <div class="pages-header">
+        <span>Pages</span>
+        <span id="pagesHeaderCount">0 pages</span>
+      </div>
+      <div class="pages-list" id="pagesList"></div>
+    </div>
+
+    <!-- Options -->
+    <div class="options-section hidden" id="optionsSection">
+      <!-- Download Mode Toggle -->
+      <div class="option-row" style="margin-bottom: 16px; padding-bottom: 12px; border-bottom: 1px solid #eee;">
+        <label for="downloadMode">Download as:</label>
+        <select id="downloadMode" style="flex: 1; margin-left: 10px;">
+          <option value="images">Individual Images</option>
+          <option value="pdf">Combined PDF</option>
+        </select>
+      </div>
+
+      <!-- Image Options (shown when downloading images) -->
+      <div id="imageOptions">
+        <div class="option-row">
+          <input type="checkbox" id="addPageNumbers" checked>
+          <label for="addPageNumbers">Add page numbers to filenames</label>
+        </div>
+        <div class="option-row">
+          <label for="imageFormat">Format:</label>
+          <select id="imageFormat">
+            <option value="jpg">JPEG</option>
+            <option value="png">PNG</option>
+            <option value="webp">WebP</option>
+          </select>
+        </div>
+      </div>
+
+      <!-- PDF Options (shown when downloading PDF) -->
+      <div id="pdfOptions" class="hidden">
+        <div class="option-row">
+          <label for="pdfFilename">PDF filename:</label>
+        </div>
+        <div class="option-row">
+          <input type="text" id="pdfFilename" placeholder="document.pdf" value="document.pdf" style="flex: 1; padding: 8px; border: 1px solid #ddd; border-radius: 4px;">
+        </div>
+        <div class="option-row">
+          <label for="pdfPageSize">Page size:</label>
+          <select id="pdfPageSize">
+            <option value="auto">Auto (fit to image)</option>
+            <option value="a4">A4</option>
+            <option value="letter">Letter</option>
+            <option value="legal">Legal</option>
+          </select>
+        </div>
+      </div>
+
+      <!-- Common Options -->
+      <div class="option-row" style="margin-top: 12px; padding-top: 12px; border-top: 1px solid #eee;">
+        <label for="imageQuality">Image quality:</label>
+        <select id="imageQuality">
+          <option value="full" selected>Full resolution</option>
+          <option value="1024">1024px width</option>
+          <option value="800">800px width</option>
+          <option value="512">512px width</option>
+        </select>
+      </div>
+    </div>
+
+    <!-- Progress Section -->
+    <div class="progress-section hidden" id="progressSection">
+      <div class="progress-header">
+        <span>Downloading...</span>
+        <span id="progressPercent">0%</span>
+      </div>
+      <div class="progress-bar">
+        <div class="progress-fill" id="progressFill" style="width: 0%"></div>
+      </div>
+      <div class="progress-text" id="progressText">Preparing download...</div>
+    </div>
+
+    <!-- Download Button -->
+    <button class="btn btn-primary hidden" id="downloadBtn">
+      Download All Pages
+    </button>
+
+    <!-- Cancel Button -->
+    <button class="btn btn-secondary hidden" id="cancelBtn">
+      Cancel Download
+    </button>
+  </div>
+
+  <script src="jspdf.min.js"></script>
+  <script src="popup.js"></script>
+</body>
+</html>
