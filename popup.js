@@ -378,14 +378,20 @@ async function loadManifest(manifestUrl) {
     pageCount.textContent = pages.length;
     pagesHeaderCount.textContent = `${pages.length} pages`;
 
+    // Warn (don't silently drop) when canvases have no image in the manifest.
+    const missingCount = pages.filter(p => p.missing).length;
+    if (missingCount > 0) {
+      showError(`Heads up: ${missingCount} of ${pages.length} page(s) have no image in the manifest and will be skipped during download.`);
+    }
+
     // Get document title
     const title = getManifestTitle(manifestData);
     documentTitle = title || 'document';
     docTitle.textContent = documentTitle;
 
-    // Set default PDF filename
-    const safeFilename = documentTitle.replace(/[^a-zA-Z0-9\s-_]/g, '').replace(/\s+/g, '_').substring(0, 50);
-    pdfFilename.value = `${safeFilename}.pdf`;
+    // Set default PDF filename — preserve the title (spaces/punctuation),
+    // stripping only characters that are illegal in filenames.
+    pdfFilename.value = `${makeSafeFilename(documentTitle)}.pdf`;
 
     // Render pages list
     renderPagesList();
@@ -412,6 +418,7 @@ function parseManifest(manifest) {
       try {
         let imageUrl = null;
         let serviceUrl = null;
+        let imageApiVersion = 2;
 
         if (canvas.items && canvas.items[0] && canvas.items[0].items) {
           const annotation = canvas.items[0].items[0];
@@ -422,20 +429,23 @@ function parseManifest(manifest) {
             if (body.service) {
               const service = Array.isArray(body.service) ? body.service[0] : body.service;
               serviceUrl = service.id || service['@id'];
+              imageApiVersion = detectImageApiVersion(service);
             }
           }
         }
 
-        if (imageUrl || serviceUrl) {
-          parsedPages.push({
-            page: index + 1,
-            label: extractLabel(canvas.label) || `Page ${index + 1}`,
-            url: imageUrl,
-            serviceUrl: serviceUrl,
-            width: canvas.width,
-            height: canvas.height
-          });
-        }
+        // Always surface the canvas, even with no image, so the page count
+        // stays honest and the user is warned rather than silently shorted.
+        parsedPages.push({
+          page: index + 1,
+          label: extractLabel(canvas.label) || `Page ${index + 1}`,
+          url: imageUrl,
+          serviceUrl: serviceUrl,
+          imageApiVersion: imageApiVersion,
+          width: canvas.width,
+          height: canvas.height,
+          missing: !(imageUrl || serviceUrl)
+        });
       } catch (e) {
         console.warn(`Error parsing canvas ${index}:`, e);
       }
@@ -447,6 +457,7 @@ function parseManifest(manifest) {
       try {
         let imageUrl = null;
         let serviceUrl = null;
+        let imageApiVersion = 2;
 
         if (canvas.images && canvas.images[0] && canvas.images[0].resource) {
           const resource = canvas.images[0].resource;
@@ -455,19 +466,20 @@ function parseManifest(manifest) {
           if (resource.service) {
             const service = Array.isArray(resource.service) ? resource.service[0] : resource.service;
             serviceUrl = service['@id'] || service.id;
+            imageApiVersion = detectImageApiVersion(service);
           }
         }
 
-        if (imageUrl || serviceUrl) {
-          parsedPages.push({
-            page: index + 1,
-            label: canvas.label || `Page ${index + 1}`,
-            url: imageUrl,
-            serviceUrl: serviceUrl,
-            width: canvas.width,
-            height: canvas.height
-          });
-        }
+        parsedPages.push({
+          page: index + 1,
+          label: extractLabel(canvas.label) || `Page ${index + 1}`,
+          url: imageUrl,
+          serviceUrl: serviceUrl,
+          imageApiVersion: imageApiVersion,
+          width: canvas.width,
+          height: canvas.height,
+          missing: !(imageUrl || serviceUrl)
+        });
       } catch (e) {
         console.warn(`Error parsing canvas ${index}:`, e);
       }
@@ -475,6 +487,30 @@ function parseManifest(manifest) {
   }
 
   return parsedPages;
+}
+
+// Determine the IIIF Image API major version from a service description.
+// v3 services use type "ImageService3" / context ".../image/3/..."; older
+// ones are treated as v2 (which uses the /full/full/ size syntax).
+function detectImageApiVersion(service) {
+  if (!service) return 2;
+  const type = service.type || service['@type'] || '';
+  const ctx = (Array.isArray(service['@context']) ? service['@context'].join(' ') : service['@context']) || '';
+  const profile = (Array.isArray(service.profile) ? service.profile.join(' ') : service.profile) || '';
+  if (/3/.test(type) || /image\/3/.test(ctx) || /image\/3/.test(profile)) return 3;
+  return 2;
+}
+
+// Build a filesystem-safe filename that keeps the human-readable title intact
+// (spaces, commas, parentheses, periods) and removes only illegal characters.
+function makeSafeFilename(name) {
+  return (name || 'document')
+    .replace(/[<>:"\/\\|?*]/g, '') // only filesystem-illegal chars; keeps spaces, commas, ( ), ., -
+    .replace(/\s+/g, ' ')
+    .trim()
+    .replace(/\.+$/, '')                          // no trailing dots
+    .substring(0, 150)
+    .trim() || 'document';
 }
 
 function extractLabel(label) {
@@ -506,10 +542,13 @@ function renderPagesList() {
 
   pages.forEach((page, index) => {
     const div = document.createElement('div');
-    div.className = 'page-item';
+    div.className = 'page-item' + (page.missing ? ' page-item-missing' : '');
+    const missingTag = page.missing
+      ? ' <span class="page-missing" title="No image in this manifest — will be skipped">⚠ no image</span>'
+      : '';
     div.innerHTML = `
       <div class="page-num">${page.page}</div>
-      <div class="page-label" title="${page.label}">${page.label}</div>
+      <div class="page-label" title="${page.label}">${page.label}${missingTag}</div>
       <div class="page-status" id="page-status-${index}"></div>
     `;
     pagesList.appendChild(div);

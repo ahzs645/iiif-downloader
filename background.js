@@ -96,10 +96,14 @@ async function fetchWithRetry(url, maxRetries = 3, baseDelay = 2000) {
         return response;
       }
 
-      // If rate limited (403 or 429), wait longer before retry
-      if (response.status === 403 || response.status === 429) {
+      // Retry on rate limiting (403/429) AND transient server/gateway errors
+      // (500/502/503/504). IIIF image servers commonly throw 502/503 while
+      // generating large derivatives on the fly — those are worth retrying,
+      // not failing outright.
+      const RETRYABLE = [403, 429, 500, 502, 503, 504];
+      if (RETRYABLE.includes(response.status)) {
         const waitTime = baseDelay * Math.pow(2, attempt); // Exponential backoff
-        console.log(`Rate limited, waiting ${waitTime}ms before retry ${attempt + 1}/${maxRetries}`);
+        console.log(`HTTP ${response.status}, waiting ${waitTime}ms before retry ${attempt + 1}/${maxRetries}`);
         await new Promise(resolve => setTimeout(resolve, waitTime));
         lastError = new Error(`HTTP ${response.status}`);
         continue;
@@ -133,6 +137,14 @@ async function downloadForPDF() {
       total: pages.length,
       status: 'downloading'
     });
+
+    // Skip canvases that have no image in the manifest (counted as failed so
+    // the final tally is honest) rather than fetching a null URL.
+    if (pages[i].missing || !buildImageUrl(pages[i], options, true)) {
+      console.warn(`Skipping page ${i + 1} (${pages[i].label}): no image in manifest`);
+      downloadState.failed++;
+      continue;
+    }
 
     try {
       const imageUrl = buildImageUrl(pages[i], options, true); // force jpg for PDF
@@ -198,6 +210,13 @@ async function downloadAsImages() {
       status: 'downloading'
     });
 
+    // Skip canvases with no image in the manifest (honest failure count).
+    if (pages[i].missing || !buildImageUrl(pages[i], options, false)) {
+      console.warn(`Skipping page ${i + 1} (${pages[i].label}): no image in manifest`);
+      downloadState.failed++;
+      continue;
+    }
+
     try {
       const imageUrl = buildImageUrl(pages[i], options, false);
       const filename = generateFilename(pages[i], i, options);
@@ -230,7 +249,10 @@ function buildImageUrl(page, options, forceJpg = false) {
   const format = forceJpg ? 'jpg' : (options.imageFormat || 'jpg');
 
   if (page.serviceUrl) {
-    const sizeParam = quality === 'full' ? 'full' : `${quality},`;
+    // IIIF Image API 3 replaced the "full" size keyword with "max". Using the
+    // wrong one makes some servers reject the request, so pick by version.
+    const fullSize = page.imageApiVersion === 3 ? 'max' : 'full';
+    const sizeParam = quality === 'full' ? fullSize : `${quality},`;
     return `${page.serviceUrl}/full/${sizeParam}/0/default.${format}`;
   }
 
@@ -260,9 +282,10 @@ function generateFilename(page, index, options) {
     filename = `page_${paddedNum}`;
   } else {
     filename = (page.label || `page_${index + 1}`)
-      .replace(/[^a-zA-Z0-9\s-_]/g, '')
-      .replace(/\s+/g, '_')
-      .substring(0, 50);
+      .replace(/[<>:"\/\\|?*]/g, '') // keep punctuation; strip only illegal chars
+      .replace(/\s+/g, ' ')
+      .trim()
+      .substring(0, 100) || `page_${index + 1}`;
   }
 
   return `${filename}.${format}`;
@@ -330,11 +353,21 @@ function downloadFile(url, filename) {
 
         chrome.downloads.onChanged.addListener(listener);
 
-        // Timeout
+        // Timeout: don't blindly assume success — a hung request would
+        // otherwise be counted as a completed (but truncated) file. Check the
+        // real state and reject if it isn't actually complete, so the retry
+        // logic can take over.
         setTimeout(() => {
           chrome.downloads.onChanged.removeListener(listener);
-          resolve();
-        }, 60000);
+          chrome.downloads.search({ id: downloadId }, (items) => {
+            const item = items && items[0];
+            if (item && item.state === 'complete') {
+              resolve();
+            } else {
+              reject(new Error('Download timed out before completing'));
+            }
+          });
+        }, 120000);
       }
     );
   });
